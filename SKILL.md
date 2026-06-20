@@ -1,7 +1,7 @@
 ---
 name: QlikSense
 description: "Use this skill when asked to investigate Qlik Sense data models, ETL load scripts, UI expressions (Set Analysis, Aggr, range functions), visualisation design, performance optimisation, Section Access, incremental reloads, or when debugging any Qlik Sense error — script, data model, or system-level. Also use this skill when the user mentions QVD, QVF, reload log, data model viewer, master items, star schema in a Qlik context, preceding load, ApplyMap, synthetic keys, or describes a Qlik chart showing wrong values, zeros, nulls, or dashes — even if they don't say 'Qlik Sense' explicitly. Includes a complete function reference and advanced pattern library sourced from official Qlik documentation, plus the Komment write-back extension (Kaptain service, partial reloads, write-back to external databases). Also use when the user mentions Komment, write-back, or commenting in a Qlik context."
-version: 4.0
+version: 4.1
 ---
 
 # Qlik Sense Expert Assistant Guide
@@ -10,22 +10,30 @@ This skill equips you with comprehensive Qlik Sense architecture, scripting, fro
 
 **Scope:** Qlik Sense app development — data modelling, load scripts, expressions, visualisations, and debugging. This covers Desktop, Enterprise, and SaaS editions at the application layer. It does not cover QSEoW server administration (QRS/Engine API, reload tasks, security rules) or infrastructure operations (backup/restore, service management, cache warming).
 
-## How to use the knowledge base
+## How to use the knowledge base — ALWAYS retrieve through the tool
 
-This skill has a large reference corpus (~60k tokens across 16 files). Do **not** read whole reference files when a retrieval tool is available — pull only the passages you need.
+This skill has a large reference corpus (~60k tokens across 18 files). **Never read whole reference files to answer a question.** For accuracy and low token use, every lookup goes through the retrieval tool, which returns only the few relevant passages (typically under 1,500 tokens) with their source file and heading path. Reading a whole file is a last resort, used only when the tool genuinely cannot be made to run (see step D) or when you have been explicitly asked to work through one file end to end.
 
-**Step 1 — Prefer the retrieval tool if it is connected.**
-If a tool named `qlik_knowledge_search` is available, use it first for any specific lookup. It returns the few most relevant passages (typically under 1,500 tokens) instead of a whole file.
+The tool ships with this skill in the **`tool/` folder beside this SKILL.md**. Work down this ladder on the first Qlik lookup of a session, then keep using whichever rung succeeded:
 
-- Call `qlik_knowledge_search(query, top_k=5, domain=optional)` with a specific query, e.g. `qlik_knowledge_search("incremental reload upsert pattern", domain="advanced")`.
-- Use a `domain` filter to narrow results: `backend`, `frontend`, `functions`, `advanced`, `debugging`, `visualisation`, `komment`, or topic tags such as `set-analysis`, `qvd`, `section-access`, `performance`. Call `qlik_knowledge_domains()` if unsure.
-- Make a fresh, specific call per sub-question rather than one broad call. Several narrow searches beat one vague one.
+**A — MCP tool (preferred).** If a tool named `qlik_knowledge_search` is available in the session, call it:
+- `qlik_knowledge_search(query, top_k=5, domain=optional)` — e.g. `qlik_knowledge_search("incremental reload upsert pattern", domain="advanced")`.
+- Use a `domain` filter to narrow: `backend`, `frontend`, `functions`, `advanced`, `debugging`, `visualisation`, `komment`, or cross-cutting tags `set-analysis`, `qvd`, `section-access`, `performance`. Call `qlik_knowledge_domains()` if unsure.
 
-**Step 2 — Fall back to reading a reference file** only when the tool is not connected, or when you need to read a whole topic end to end (e.g. working through every cookbook recipe). Read the single most relevant file, not several.
+**B — CLI (works the same session, no restart).** If `qlik_knowledge_search` is *not* in the session, run the bundled CLI via the shell — it reads the same index and needs no MCP restart. Use the tool's own venv Python:
+- Windows: `tool\.venv\Scripts\python.exe tool\qlik_search.py "your query" --domain advanced`
+- macOS/Linux: `tool/.venv/bin/python tool/qlik_search.py "your query" --domain advanced`
+- List filters with `... qlik_search.py --domains`.
 
-The corpus is split into focused files so that even a direct read stays small. Map your need to one file:
+**C — Bootstrap if not installed, then retry B.** If step B prints `QLIK_TOOL_NOT_READY` (exit code 3) or the venv is missing, install the tool once, then go back to step B:
+- Windows: `py tool\setup.py`  ·  macOS/Linux: `python3 tool/setup.py`
+- `setup.py` creates the venv, installs dependencies, and builds the index (first run downloads a ~90MB local embedding model; no API key, then offline). It also prints the `claude mcp add` command — run it so `qlik_knowledge_search` (step A) is available in future sessions, but you do **not** need to wait for a restart: step B works immediately after setup.
 
-| Reference file | Read when |
+**D — Last resort only.** If, and only if, the tool cannot be made to run after setup (e.g. no Python available), read the single most relevant reference file below — never several.
+
+Always make a fresh, specific search per sub-question; several narrow searches beat one vague one.
+
+| Reference file | Covers (use as a `domain` hint, or to pick a last-resort read) |
 |-----------|-----------|
 | [scripting_knowledgebase.md](references/scripting_knowledgebase.md) | Backend load scripts: LOAD variants, joins, mapping, null handling, IntervalMatch, CrossTable |
 | [expression_knowledgebase.md](references/expression_knowledgebase.md) | Frontend expressions: Set Analysis, Aggr, TOTAL, layout/navigation functions |
@@ -46,7 +54,7 @@ The corpus is split into focused files so that even a direct read stays small. M
 | `advanced_architecture_admin.md` | App architecture, Section Access, publishing, ODAG, Direct Discovery, governance |
 | `advanced_cookbook.md` | The 12 complete cookbook recipes |
 
-> The retrieval tool indexes all of the files above. See `tool/README.md` to set it up. If the tool is connected, Step 1 is almost always faster and cheaper than Step 2.
+> The retrieval tool indexes every file above. Setup and registration details are in `tool/README.md`.
 
 ---
 

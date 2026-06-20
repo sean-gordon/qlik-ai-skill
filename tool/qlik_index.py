@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""
+qlik_index.py — Shared retrieval core for the Qlik knowledge corpus.
+
+Both the MCP server (qlik_mcp_server.py) and the CLI (qlik_search.py) call
+into this module, so the search behaviour is identical no matter how it is
+invoked. Embeddings are LOCAL and FREE (Chroma's bundled model). No API key.
+
+Public API:
+  search(query, top_k=5, domain=None, backend=None, index_dir=None)
+      -> list[(score: float, {"source", "heading_path", "text"})]
+  format_hits(query, hits, domain=None) -> str   # human/LLM-readable block
+
+Backend is chosen by the QLIK_BACKEND env var (default "chroma"). The Chroma
+index directory defaults to this file's own folder, so the CLI needs no config.
+"""
+
+import os
+from pathlib import Path
+
+EMBED_MODEL = "all-MiniLM-L6-v2"
+COLLECTION = "qlik_knowledge"
+
+# Domain filters advertised to callers. Kept here so the MCP server, the CLI
+# and the docs all describe the same set.
+DOMAINS = {
+    "backend": "load scripts, ETL, LOAD variants, ApplyMap, joins",
+    "frontend": "chart expressions, Set Analysis, Aggr, TOTAL",
+    "functions": "exact function signatures, parameters, return types",
+    "advanced": "incremental loads, link tables, SCD, cookbook recipes",
+    "debugging": "script errors, data model diagnostics, performance",
+    "visualisation": "chart selection, KPI design, styling",
+    "komment": "Komment write-back extension setup and configuration",
+    "set-analysis": "Set Analysis syntax and patterns (cross-cutting)",
+    "qvd": "QVD load/store and optimisation (cross-cutting)",
+    "section-access": "row-level security (cross-cutting)",
+    "performance": "optimisation (cross-cutting)",
+}
+
+
+class ToolNotReady(RuntimeError):
+    """Raised when the index or its dependencies are not available yet.
+    Callers should treat this as 'run setup.py', not as a hard failure."""
+
+
+def _backend() -> str:
+    return os.environ.get("QLIK_BACKEND", "chroma")
+
+
+def _index_dir(index_dir=None) -> Path:
+    if index_dir:
+        return Path(index_dir)
+    env = os.environ.get("QLIK_INDEX_DIR")
+    return Path(env) if env else Path(__file__).parent
+
+
+_state: dict = {}
+
+
+# ---- Chroma backend --------------------------------------------------------
+def _chroma_collection(index_dir: Path):
+    if "coll" not in _state:
+        try:
+            import chromadb  # type: ignore
+            from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+        except ImportError as e:
+            raise ToolNotReady(f"chromadb not installed: {e}") from e
+        db = index_dir / "chroma_db"
+        if not db.exists():
+            raise ToolNotReady(f"index not built (missing {db})")
+        client = chromadb.PersistentClient(path=str(db))
+        try:
+            _state["coll"] = client.get_collection(
+                name=COLLECTION, embedding_function=DefaultEmbeddingFunction()
+            )
+        except Exception as e:  # collection absent / corrupt
+            raise ToolNotReady(f"collection '{COLLECTION}' unavailable: {e}") from e
+    return _state["coll"]
+
+
+def _search_chroma(query, top_k, domain, index_dir):
+    coll = _chroma_collection(index_dir)
+    res = coll.query(query_texts=[query], n_results=max(top_k * 3, top_k))
+    docs, metas, dists = res["documents"][0], res["metadatas"][0], res["distances"][0]
+    out = []
+    for doc, meta, dist in zip(docs, metas, dists):
+        if domain and domain not in (meta.get("tags", "").split(",")):
+            continue
+        out.append((1.0 - dist, {
+            "source": meta.get("source", "?"),
+            "heading_path": meta.get("heading_path", "").split(" > "),
+            "text": doc,
+        }))
+        if len(out) >= top_k:
+            break
+    return out
+
+
+# ---- pgvector backend ------------------------------------------------------
+def _embed_query(text):
+    if "embedder" not in _state:
+        try:
+            from sentence_transformers import SentenceTransformer  # type: ignore
+        except ImportError as e:
+            raise ToolNotReady(f"sentence-transformers not installed: {e}") from e
+        _state["embedder"] = SentenceTransformer(f"sentence-transformers/{EMBED_MODEL}")
+    return _state["embedder"].encode([text], normalize_embeddings=True)[0].tolist()
+
+
+def _search_pgvector(query, top_k, domain, index_dir):
+    try:
+        import psycopg  # type: ignore
+        from pgvector.psycopg import register_vector  # type: ignore
+    except ImportError as e:
+        raise ToolNotReady(f"psycopg/pgvector not installed: {e}") from e
+    if "DATABASE_URL" not in os.environ:
+        raise ToolNotReady("DATABASE_URL not set for pgvector backend")
+    q = _embed_query(query)
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        register_vector(conn)
+        if domain:
+            rows = conn.execute(
+                "SELECT 1 - (embedding <=> %s::vector) AS score, source, heading_path, text "
+                "FROM qlik_chunks WHERE %s = ANY(tags) ORDER BY embedding <=> %s::vector LIMIT %s",
+                (q, domain, q, top_k),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT 1 - (embedding <=> %s::vector) AS score, source, heading_path, text "
+                "FROM qlik_chunks ORDER BY embedding <=> %s::vector LIMIT %s",
+                (q, q, top_k),
+            ).fetchall()
+    return [(r[0], {"source": r[1], "heading_path": r[2].split(" > "), "text": r[3]}) for r in rows]
+
+
+# ---- Public API ------------------------------------------------------------
+def search(query, top_k=5, domain=None, backend=None, index_dir=None):
+    """Return [(score, {source, heading_path, text})] best matches for query.
+    Raises ToolNotReady if the index or dependencies are not available."""
+    top_k = max(1, min(int(top_k), 10))
+    dom = (domain or "").strip() or None
+    be = backend or _backend()
+    idx = _index_dir(index_dir)
+    if be == "pgvector":
+        return _search_pgvector(query, top_k, dom, idx)
+    return _search_chroma(query, top_k, dom, idx)
+
+
+def format_hits(query, hits, domain=None):
+    if not hits:
+        return f"No passages found for query: {query!r}" + (f" (domain={domain})" if domain else "")
+    out = [f"Found {len(hits)} passage(s) for: {query!r}\n"]
+    for score, c in hits:
+        path = c["heading_path"]
+        path = " > ".join(path) if isinstance(path, list) else path
+        out.append(f"--- [{c['source']}] {path}  (relevance {score:.2f}) ---\n{c['text']}\n")
+    return "\n".join(out)

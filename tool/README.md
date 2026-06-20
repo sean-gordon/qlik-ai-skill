@@ -12,11 +12,35 @@ no per-query cost. The model downloads once (~90MB) on the first build.
 
 | File | Purpose |
 |------|---------|
+| `setup.py` | **One-command bootstrap** — creates the venv, installs deps, builds the index, prints the MCP registration command. Run with any Python 3.10+. |
+| `qlik_index.py` | Shared search core (Chroma/pgvector). Used by both the server and the CLI so they behave identically. |
+| `qlik_mcp_server.py` | The MCP server exposing `qlik_knowledge_search` / `qlik_knowledge_domains` to Claude. |
+| `qlik_search.py` | Command-line search — same engine, callable from the shell. Lets the skill retrieve in the current session without an MCP restart. |
 | `build_chunks.py` | Parses `../references/*.md` into `chunks.jsonl` (one retrievable passage per heading). No dependencies. |
 | `build_index.py` | Builds the search index. Backends: `chroma` (default) and `pgvector`. |
-| `qlik_mcp_server.py` | The MCP server exposing `qlik_knowledge_search` to Claude. |
 | `chunks.jsonl` | Pre-built chunks (498). Regenerate after editing references. |
 | `requirements.txt` | Python dependencies. |
+
+## Quick start
+
+One command builds everything (venv + dependencies + index):
+
+```bash
+# Windows           macOS/Linux
+py setup.py         python3 setup.py
+```
+
+Then register the MCP server with the `claude mcp add ...` command `setup.py`
+prints, and restart Claude Code. You can search immediately, without waiting for
+the restart, via the CLI:
+
+```bash
+.venv/Scripts/python.exe qlik_search.py "incremental reload upsert" --domain advanced   # Windows
+./.venv/bin/python      qlik_search.py "incremental reload upsert" --domain advanced     # macOS/Linux
+./.venv/bin/python      qlik_search.py --domains                                         # list filters
+```
+
+The sections below cover the same steps manually, plus the pgvector team backend.
 
 ## Which backend?
 

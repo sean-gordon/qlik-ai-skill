@@ -28,20 +28,27 @@ qlik-ai-skill/
 │   ├── advanced_expressions_viz.md       # Advanced Set Analysis, master library
 │   ├── advanced_architecture_admin.md    # Architecture, Section Access, governance
 │   └── advanced_cookbook.md              # 12 complete cookbook recipes
-└── tool/                                 # Optional semantic-search retrieval tool
+└── tool/                                 # Semantic-search retrieval tool
+    ├── setup.py                          # One-command bootstrap: venv + deps + index
+    ├── qlik_index.py                     # Shared search core (used by server + CLI)
+    ├── qlik_mcp_server.py                # MCP server: qlik_knowledge_search
+    ├── qlik_search.py                    # CLI search (same-session, no MCP restart)
     ├── build_chunks.py                   # References → retrievable chunks
     ├── build_index.py                    # Embed + index (local or pgvector)
-    ├── qlik_mcp_server.py                # MCP server: qlik_knowledge_search
     ├── chunks.jsonl                      # Pre-built chunks
     ├── requirements.txt
     └── README.md                         # Tool setup guide
 ```
 
-**v4.0 change:** The two largest references (`functions_reference.md`,
+**v4.1:** the skill now **always** answers through the retrieval tool and
+self-bootstraps it if missing (`tool/setup.py`). A CLI (`tool/qlik_search.py`)
+lets it retrieve in the same session without waiting for an MCP restart.
+
+**v4.0:** the two largest references (`functions_reference.md`,
 `advanced_patterns.md`) were split into focused files so any single read stays
-small, and an optional retrieval tool was added. With the tool connected, Claude
-searches the corpus and pulls only the passages it needs (~1,500 tokens) instead
-of loading whole files (7k–14k tokens). See `tool/README.md`.
+small, and the retrieval tool was added. Instead of loading whole files
+(7k–14k tokens), the assistant pulls only the passages it needs (~1,500 tokens).
+See `tool/README.md`.
 
 ### What Each File Covers
 
@@ -60,56 +67,50 @@ of loading whole files (7k–14k tokens). See `tool/README.md`.
 
 ## Installation
 
-The skill works in two parts:
+The skill works in two parts, and **both are required** for the experience it is designed for:
 
-- **Part A — the skill itself** (`SKILL.md` + `references/`). This is all you need. With it installed, the assistant reads the relevant reference file directly when answering Qlik questions.
-- **Part B — the optional retrieval tool** (`tool/`). It indexes the references so the assistant pulls only the passages it needs (~1,500 tokens) instead of loading a whole file (7k–14k). Recommended if your assistant supports MCP (e.g. Claude Code), but not required.
+- **Part A — the skill files** (`SKILL.md` + `references/`). The assistant's Qlik guide and the full knowledge corpus.
+- **Part B — the retrieval tool** (`tool/`). It indexes the references so the assistant pulls only the passages it needs (~1,500 tokens) instead of loading a whole file (7k–14k). The skill is built to **always** answer through this tool — for accuracy and low token use — and will offer to install it itself if it is missing. On hosts with a local Python runtime (e.g. Claude Code), install it. Browser-only hosts run Part A alone.
 
-For non-technical users, the easiest way to install is to let your AI assistant do it for you. Copy the prompt below; it covers both parts.
+For non-technical users, the easiest way is to let your AI assistant do it. Copy the prompt below; it installs and builds everything.
 
 ### 1. Agentic AI Assistants (Claude Code, Antigravity, Aider, etc.)
 
-If your AI assistant can run terminal commands and write files, paste this prompt. It downloads, installs, builds, and registers everything.
+If your AI assistant can run terminal commands and write files, paste this prompt.
 
 **Copy and paste this prompt:**
 ```text
 Please install or update the Qlik Sense AI skill from the public repository at
 https://github.com/sean-gordon/qlik-ai-skill
 
-PART A — install the skill files (required):
-1. Clone or download the repository (SKILL.md, the references/ folder, and the tool/ folder).
+PART A — install the skill files:
+1. Clone or download the whole repository (SKILL.md, the references/ folder, AND the tool/ folder).
 2. Identify the correct skills path for your host. If you support global skills, install to the
    global folder (e.g. %USERPROFILE%\.{ai_assistant_name}\skills\QlikSense\ on Windows or
    ~/.{ai_assistant_name}/skills/QlikSense/ on macOS/Linux, replacing {ai_assistant_name} with
    your config directory such as claude or gemini). Otherwise install locally under
    .agents/skills/QlikSense/ in the project workspace.
-3. Place SKILL.md at the QlikSense/ root and copy the entire references/ folder beside it.
-   Overwrite any existing files so everything is up to date.
+3. Place SKILL.md at the QlikSense/ root and copy the entire references/ AND tool/ folders beside
+   it. Overwrite any existing files so everything is up to date.
 
-PART B — set up the retrieval tool (optional but recommended if you support MCP):
-4. From the tool/ folder, create an isolated Python virtual environment (Python 3.10+; the
-   Windows "py" launcher or python3 both work) and install dependencies into it:
-     - Windows:      py -m venv .venv ; .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-     - macOS/Linux:  python3 -m venv .venv ; ./.venv/bin/python -m pip install -r requirements.txt
-5. Build the search index (this downloads a ~90MB embedding model once, then runs offline; no API key):
-     - Windows:      .\.venv\Scripts\python.exe build_index.py --backend chroma
-     - macOS/Linux:  ./.venv/bin/python build_index.py --backend chroma
-6. Register the MCP server with your host, using the venv's Python interpreter (NOT a bare
-   "python3" — the dependencies live in the venv). For Claude Code, run:
-     claude mcp add qlik-knowledge --scope user \
-       --env QLIK_BACKEND=chroma \
-       --env QLIK_INDEX_DIR="<absolute path to the tool folder>" \
-       -- "<absolute path to the venv python>" "<absolute path to tool/qlik_mcp_server.py>"
-   For other MCP hosts, add an equivalent stdio server entry pointing the command at the venv
-   Python and tool/qlik_mcp_server.py, with the same two env vars.
-7. Verify: confirm SKILL.md + references/ are in place, and (if you did Part B) that the
-   qlik_knowledge_search and qlik_knowledge_domains tools are connected. Restart the assistant
-   if MCP tools only load at startup. Report what you installed and confirm it is ready.
+PART B — set up the retrieval tool (required; the skill answers through it):
+4. From the installed QlikSense/ folder, run the one-command bootstrap with any Python 3.10+:
+     - Windows:      py tool\setup.py
+     - macOS/Linux:  python3 tool/setup.py
+   This creates a virtual environment, installs dependencies, and builds the search index
+   (first run downloads a ~90MB local embedding model once, then works offline; no API key).
+5. setup.py prints a `claude mcp add ...` command at the end. Run it to register the MCP server
+   (it points at the venv's Python and tool/qlik_mcp_server.py). For non-Claude MCP hosts, add an
+   equivalent stdio server entry using that same venv Python and tool/qlik_mcp_server.py.
+6. Verify: SKILL.md + references/ + tool/ are in place, `tool/setup.py` completed, and (after a
+   restart, since MCP tools load at startup) `qlik_knowledge_search` is connected. The skill also
+   works immediately via the bundled CLI (tool/qlik_search.py) without a restart. Report what you
+   installed and confirm it is ready.
 ```
 
 ### 2. Web-Based AI (Claude Projects, Custom GPTs)
 
-Browser interfaces have no filesystem access, so use the skill files only (Part A — the retrieval tool needs a local Python runtime and cannot run here):
+Browser interfaces have no filesystem access, so they run **Part A only** — the retrieval tool needs a local Python runtime. The assistant reads the relevant reference file directly:
 1. Download this repository as a ZIP (green **Code** button → **Download ZIP**) and extract it.
 2. Upload `SKILL.md` and every markdown file inside `references/` to your Claude Project knowledge base, Custom GPT builder, or equivalent workspace.
 
@@ -124,22 +125,29 @@ Copy the skill into your assistant's skills folder (replace `{ai_assistant_name}
 | Windows | `%USERPROFILE%\.{ai_assistant_name}\skills\QlikSense\` |
 | macOS/Linux | `~/.{ai_assistant_name}/skills/QlikSense/` |
 
-For a project-scoped install instead, copy into `.agents/skills/QlikSense/` at your workspace root. Either way, keep this layout:
+For a project-scoped install instead, copy into `.agents/skills/QlikSense/` at your workspace root. Either way, keep this layout (the `tool/` folder must sit beside `SKILL.md` so the skill can find it):
 
 ```
 QlikSense/
 ├── SKILL.md
 ├── references/          # all 18 reference markdown files
-└── tool/                # only needed for Part B
+└── tool/                # the retrieval tool (Part B)
 ```
 
 For **Claude Code**, you can also reference `SKILL.md` and the `references/` files from your project's `CLAUDE.md` as additional context sources.
 
-#### Part B — retrieval tool (optional)
+#### Part B — retrieval tool
 
-See [`tool/README.md`](tool/README.md) for the full setup. In short, from the `tool/` folder: create a venv, `pip install -r requirements.txt`, run `build_index.py --backend chroma`, then register the MCP server (pointing at the venv Python) per the commands in the prompt above. A `pgvector` backend is available for teams sharing one central index.
+One command from the installed `QlikSense/` folder builds everything:
 
-> **Tip:** the `tool/chroma_db/` index is a build output and is intentionally not committed — each machine builds it locally with `build_index.py` (free, no API key). `tool/chunks.jsonl` *is* committed so you can skip re-chunking unless you edit the references.
+```bash
+# Windows           macOS/Linux
+py tool\setup.py    python3 tool/setup.py
+```
+
+It creates `tool/.venv`, installs dependencies, builds the Chroma index, and prints the `claude mcp add` command to register the MCP server. See [`tool/README.md`](tool/README.md) for details, the `pgvector` team backend, and the CLI (`tool/qlik_search.py`).
+
+> **Tip:** the `tool/chroma_db/` index and `tool/.venv` are build outputs and are intentionally not committed — each machine builds them locally with `setup.py` (free, no API key). `tool/chunks.jsonl` *is* committed so you can skip re-chunking unless you edit the references.
 
 ---
 
