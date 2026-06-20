@@ -55,17 +55,21 @@ def embed_local(texts: list[str]) -> list[list[float]]:
 def build_chroma(chunks, outdir: Path):
     import chromadb  # type: ignore
     persist = outdir / "chroma_db"
-    client = chromadb.PersistentClient(path=str(persist))
+    from chromadb.config import Settings
+    client = chromadb.PersistentClient(
+        path=str(persist),
+        settings=Settings(anonymized_telemetry=False)
+    )
     # Reset cleanly so re-runs don't duplicate
     try:
         client.delete_collection(COLLECTION)
     except Exception:
         pass
     # Use Chroma's built-in fastembed embedder so query-time embedding matches
-    from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+    from qlik_index import LocalONNXEmbeddingFunction
     coll = client.create_collection(
         name=COLLECTION,
-        embedding_function=DefaultEmbeddingFunction(),
+        embedding_function=LocalONNXEmbeddingFunction(outdir / "model"),
         metadata={"hnsw:space": "cosine"},
     )
     print(f"  embedding {len(chunks)} chunks locally (Chroma default: bge-small)...")

@@ -15,3 +15,6 @@ tool/chunks.json
 
 # Local env
 .env
+
+# Local session handoff docs (kept out of the public repo)
+docs/agents/handoff/

@@ -58,20 +58,45 @@ _state: dict = {}
 
 
 # ---- Chroma backend --------------------------------------------------------
+class LocalONNXEmbeddingFunction:
+    _model = None
+
+    def __init__(self, model_dir: Path):
+        self.model_dir = model_dir
+
+    def __call__(self, input):
+        if LocalONNXEmbeddingFunction._model is None:
+            from chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2 import ONNXMiniLM_L6_V2
+            model = ONNXMiniLM_L6_V2()
+            model.DOWNLOAD_PATH = self.model_dir
+            LocalONNXEmbeddingFunction._model = model
+        return LocalONNXEmbeddingFunction._model(input)
+
+    def embed_query(self, input):
+        return self(input)
+
+    def name(self) -> str:
+        return "onnx_mini_lm_l6_v2"
+
+
 def _chroma_collection(index_dir: Path):
     if "coll" not in _state:
         try:
             import chromadb  # type: ignore
-            from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
         except ImportError as e:
             raise ToolNotReady(f"chromadb not installed: {e}") from e
         db = index_dir / "chroma_db"
         if not db.exists():
             raise ToolNotReady(f"index not built (missing {db})")
-        client = chromadb.PersistentClient(path=str(db))
+        from chromadb.config import Settings
+        client = chromadb.PersistentClient(
+            path=str(db),
+            settings=Settings(anonymized_telemetry=False)
+        )
         try:
             _state["coll"] = client.get_collection(
-                name=COLLECTION, embedding_function=DefaultEmbeddingFunction()
+                name=COLLECTION,
+                embedding_function=LocalONNXEmbeddingFunction(index_dir / "model")
             )
         except Exception as e:  # collection absent / corrupt
             raise ToolNotReady(f"collection '{COLLECTION}' unavailable: {e}") from e

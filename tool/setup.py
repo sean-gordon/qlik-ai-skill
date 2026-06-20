@@ -52,9 +52,20 @@ def main():
         sys.exit(f"ERROR: venv python not found at {py}")
 
     # 2. dependencies
-    print("[2/3] installing dependencies (chromadb + mcp) ...")
-    run([str(py), "-m", "pip", "install", "--upgrade", "pip", "--quiet"])
-    run([str(py), "-m", "pip", "install", "-r", str(HERE / "requirements.txt"), "--quiet"])
+    print("[2/3] checking dependencies ...")
+    deps_ok = False
+    try:
+        res = subprocess.run([str(py), "-c", "import chromadb, mcp"], capture_output=True, text=True)
+        if res.returncode == 0:
+            deps_ok = True
+            print("  dependencies already installed and importable.")
+    except Exception:
+        pass
+
+    if not deps_ok:
+        print("  dependencies missing or incomplete; installing/upgrading ...")
+        run([str(py), "-m", "pip", "install", "--upgrade", "pip"])
+        run([str(py), "-m", "pip", "install", "-r", str(HERE / "requirements.txt")])
 
     # 3. index — regenerate chunks if missing, then build
     chunks = HERE / "chunks.jsonl"

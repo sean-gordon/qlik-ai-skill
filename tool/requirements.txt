@@ -2,7 +2,7 @@
 # Embeddings run locally and free via Chroma's bundled model (ONNX all-MiniLM-L6-v2).
 # No API key, no per-query cost. The model downloads once (~90MB) on first build.
 chromadb>=0.5
-mcp[cli]>=1.2
+mcp>=1.2
 
 # pgvector backend only (uncomment if hosting a shared team index).
 # Uses the same MiniLM model locally so the two backends are interchangeable:
