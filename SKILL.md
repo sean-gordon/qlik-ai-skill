@@ -1,7 +1,7 @@
 ---
 name: QlikSense
-description: "Use this skill when asked to investigate Qlik Sense data models, ETL load scripts, UI expressions (Set Analysis, Aggr, range functions), visualisation design, performance optimisation, Section Access, incremental reloads, or when debugging any Qlik Sense error — script, data model, or system-level. Also use this skill when the user mentions QVD, QVF, reload log, data model viewer, master items, star schema in a Qlik context, preceding load, ApplyMap, synthetic keys, or describes a Qlik chart showing wrong values, zeros, nulls, or dashes — even if they don't say 'Qlik Sense' explicitly. Includes a complete function reference and advanced pattern library sourced from official Qlik documentation."
-version: 3.0
+description: "Use this skill when asked to investigate Qlik Sense data models, ETL load scripts, UI expressions (Set Analysis, Aggr, range functions), visualisation design, performance optimisation, Section Access, incremental reloads, or when debugging any Qlik Sense error — script, data model, or system-level. Also use this skill when the user mentions QVD, QVF, reload log, data model viewer, master items, star schema in a Qlik context, preceding load, ApplyMap, synthetic keys, or describes a Qlik chart showing wrong values, zeros, nulls, or dashes — even if they don't say 'Qlik Sense' explicitly. Includes a complete function reference and advanced pattern library sourced from official Qlik documentation, plus the Komment write-back extension (Kaptain service, partial reloads, write-back to external databases). Also use when the user mentions Komment, write-back, or commenting in a Qlik context."
+version: 4.0
 ---
 
 # Qlik Sense Expert Assistant Guide
@@ -10,16 +10,43 @@ This skill equips you with comprehensive Qlik Sense architecture, scripting, fro
 
 **Scope:** Qlik Sense app development — data modelling, load scripts, expressions, visualisations, and debugging. This covers Desktop, Enterprise, and SaaS editions at the application layer. It does not cover QSEoW server administration (QRS/Engine API, reload tasks, security rules) or infrastructure operations (backup/restore, service management, cache warming).
 
-## When to read reference files
+## How to use the knowledge base
 
-| Reference | Read when |
+This skill has a large reference corpus (~60k tokens across 16 files). Do **not** read whole reference files when a retrieval tool is available — pull only the passages you need.
+
+**Step 1 — Prefer the retrieval tool if it is connected.**
+If a tool named `qlik_knowledge_search` is available, use it first for any specific lookup. It returns the few most relevant passages (typically under 1,500 tokens) instead of a whole file.
+
+- Call `qlik_knowledge_search(query, top_k=5, domain=optional)` with a specific query, e.g. `qlik_knowledge_search("incremental reload upsert pattern", domain="advanced")`.
+- Use a `domain` filter to narrow results: `backend`, `frontend`, `functions`, `advanced`, `debugging`, `visualisation`, `komment`, or topic tags such as `set-analysis`, `qvd`, `section-access`, `performance`. Call `qlik_knowledge_domains()` if unsure.
+- Make a fresh, specific call per sub-question rather than one broad call. Several narrow searches beat one vague one.
+
+**Step 2 — Fall back to reading a reference file** only when the tool is not connected, or when you need to read a whole topic end to end (e.g. working through every cookbook recipe). Read the single most relevant file, not several.
+
+The corpus is split into focused files so that even a direct read stays small. Map your need to one file:
+
+| Reference file | Read when |
 |-----------|-----------|
-| [Scripting Knowledgebase](references/scripting_knowledgebase.md) | Writing, reviewing, or debugging backend load scripts |
-| [Expression Knowledgebase](references/expression_knowledgebase.md) | Writing or debugging frontend chart expressions, Set Analysis, Aggr |
-| [Functions Reference](references/functions_reference.md) | Looking up any Qlik function signature, parameters, or return type |
-| [Advanced Patterns](references/advanced_patterns.md) | Implementing incremental loads, link tables, SCD, hierarchy, or complex modelling |
-| [Debugging Guide](references/debugging_guide.md) | Diagnosing script errors, data model issues, or performance problems |
-| [Visualisation Guide](references/visualization_guide.md) | Choosing chart types, applying DAR layout, or styling dashboards |
+| [scripting_knowledgebase.md](references/scripting_knowledgebase.md) | Backend load scripts: LOAD variants, joins, mapping, null handling, IntervalMatch, CrossTable |
+| [expression_knowledgebase.md](references/expression_knowledgebase.md) | Frontend expressions: Set Analysis, Aggr, TOTAL, layout/navigation functions |
+| [debugging_guide.md](references/debugging_guide.md) | Script errors, data model diagnostics, performance, server troubleshooting |
+| [visualization_guide.md](references/visualization_guide.md) | Chart selection, KPI design, DAR layout, styling |
+| [komment_guide.md](references/komment_guide.md) | Komment write-back extension: install, security rules, widgets, Kaptain, partial reloads |
+| **Functions** — `functions_operators_aggregation.md` | Operators; aggregation functions (Sum, Count, Avg, Aggr, Concat) |
+| `functions_setanalysis.md` | Set Analysis BNF syntax, identifiers, operators, P()/E() |
+| `functions_datetime.md` | All date/time functions, period boundaries, in-period functions |
+| `functions_string_numeric.md` | String, numeric, conditional, logical, null, formatting, interpretation |
+| `functions_counter_range_stat.md` | Counter, range, financial, statistical, ranking functions |
+| `functions_inter_record.md` | Above/Below/Peek, synthetic dimension, chart selection functions |
+| `functions_other.md` | Colour, mapping, geospatial, file, system, table info, script prefixes, system variables |
+| **Advanced** — `advanced_datamodel.md` | Chasm/fan traps, link tables, ApplyMap vs join, Join/Keep |
+| `advanced_qvd_incremental.md` | All four incremental QVD patterns, QVD optimisation |
+| `advanced_scripting.md` | Advanced scripting, Hierarchy/Crosstable/IntervalMatch prefixes, cleansing |
+| `advanced_expressions_viz.md` | Advanced Set Analysis, master library, alternate states |
+| `advanced_architecture_admin.md` | App architecture, Section Access, publishing, ODAG, Direct Discovery, governance |
+| `advanced_cookbook.md` | The 12 complete cookbook recipes |
+
+> The retrieval tool indexes all of the files above. See `tool/README.md` to set it up. If the tool is connected, Step 1 is almost always faster and cheaper than Step 2.
 
 ---
 
@@ -148,9 +175,9 @@ Section Access controls row-level (and column-level) data visibility per user.
 
 ## 7. Complete Function & Pattern References
 
-Look up function signatures in [Functions Reference](references/functions_reference.md) when you need exact parameter order, return types, or usage examples for any Qlik function — aggregation, date/time, string, numeric, statistical, financial, colour, mapping, inter-record, or system.
+Look up function signatures with `qlik_knowledge_search` (domain `functions`) when you need exact parameter order, return types, or usage examples. If reading files directly, the function reference is split by family: `functions_operators_aggregation.md`, `functions_setanalysis.md`, `functions_datetime.md`, `functions_string_numeric.md`, `functions_counter_range_stat.md`, `functions_inter_record.md`, and `functions_other.md` (colour, mapping, geospatial, file, system, prefixes, variables).
 
-Consult [Advanced Patterns](references/advanced_patterns.md) when implementing incremental reload strategies (append, insert-only, upsert, full SCD), resolving data model problems (chasm/fan traps, link tables, hierarchy flattening), or building complex Set Analysis beyond the patterns in section 3 above.
+Consult the advanced files (domain `advanced`) when implementing incremental reload strategies (append, insert-only, upsert, full SCD — see `advanced_qvd_incremental.md`), resolving data model problems (chasm/fan traps, link tables — `advanced_datamodel.md`), building complex Set Analysis (`advanced_expressions_viz.md`), or working through complete recipes (`advanced_cookbook.md`).
 
 ---
 

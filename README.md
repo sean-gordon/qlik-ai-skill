@@ -8,16 +8,40 @@ A comprehensive, reusable knowledge skill for AI coding assistants to provide **
 
 ```
 qlik-ai-skill/
-├── SKILL.md                           # Main skill configuration and quick-reference index
-└── references/
-    ├── scripting_knowledgebase.md     # Backend load script encyclopaedia
-    ├── expression_knowledgebase.md    # Frontend expressions encyclopaedia
-    ├── visualization_guide.md         # Chart selection, design, and styling guide
-    ├── debugging_guide.md             # Debugging, error handling, and admin guide
-    ├── functions_reference.md         # Complete function reference (from official Qlik docs)
-    ├── advanced_patterns.md           # Advanced patterns and cookbook recipes
-    └── komment_guide.md               # Komment write-back extension — full implementation guide
+├── SKILL.md                              # Main skill config + routing (tool-first)
+├── references/
+│   ├── scripting_knowledgebase.md        # Backend load script encyclopaedia
+│   ├── expression_knowledgebase.md       # Frontend expressions encyclopaedia
+│   ├── visualization_guide.md            # Chart selection, design, styling
+│   ├── debugging_guide.md                # Debugging, error handling, admin
+│   ├── komment_guide.md                  # Komment write-back extension
+│   ├── functions_operators_aggregation.md   # Operators + aggregation functions
+│   ├── functions_setanalysis.md          # Set Analysis BNF + element functions
+│   ├── functions_datetime.md             # Date/time functions
+│   ├── functions_string_numeric.md       # String, numeric, conditional, logical
+│   ├── functions_counter_range_stat.md   # Counter, range, financial, statistical
+│   ├── functions_inter_record.md         # Inter-record + chart selection functions
+│   ├── functions_other.md                # Colour, mapping, geospatial, system, prefixes
+│   ├── advanced_datamodel.md             # Data modelling, traps, link tables
+│   ├── advanced_qvd_incremental.md       # Incremental loads + QVD optimisation
+│   ├── advanced_scripting.md             # Advanced scripting + prefixes + cleansing
+│   ├── advanced_expressions_viz.md       # Advanced Set Analysis, master library
+│   ├── advanced_architecture_admin.md    # Architecture, Section Access, governance
+│   └── advanced_cookbook.md              # 12 complete cookbook recipes
+└── tool/                                 # Optional semantic-search retrieval tool
+    ├── build_chunks.py                   # References → retrievable chunks
+    ├── build_index.py                    # Embed + index (local or pgvector)
+    ├── qlik_mcp_server.py                # MCP server: qlik_knowledge_search
+    ├── chunks.jsonl                      # Pre-built chunks
+    ├── requirements.txt
+    └── README.md                         # Tool setup guide
 ```
+
+**v4.0 change:** The two largest references (`functions_reference.md`,
+`advanced_patterns.md`) were split into focused files so any single read stays
+small, and an optional retrieval tool was added. With the tool connected, Claude
+searches the corpus and pulls only the passages it needs (~1,500 tokens) instead
+of loading whole files (7k–14k tokens). See `tool/README.md`.
 
 ### What Each File Covers
 
@@ -36,63 +60,86 @@ qlik-ai-skill/
 
 ## Installation
 
-For non-technical users, the easiest way to install this skill is to let your AI assistant do it for you. Depending on the type of AI you are using, follow the relevant guide below.
+The skill works in two parts:
+
+- **Part A — the skill itself** (`SKILL.md` + `references/`). This is all you need. With it installed, the assistant reads the relevant reference file directly when answering Qlik questions.
+- **Part B — the optional retrieval tool** (`tool/`). It indexes the references so the assistant pulls only the passages it needs (~1,500 tokens) instead of loading a whole file (7k–14k). Recommended if your assistant supports MCP (e.g. Claude Code), but not required.
+
+For non-technical users, the easiest way to install is to let your AI assistant do it for you. Copy the prompt below; it covers both parts.
 
 ### 1. Agentic AI Assistants (Claude Code, Antigravity, Aider, etc.)
-If your AI assistant has the ability to run terminal commands and write files, copy and paste the prompt below. The AI will download, configure, and install the skill for you automatically.
+
+If your AI assistant can run terminal commands and write files, paste this prompt. It downloads, installs, builds, and registers everything.
 
 **Copy and paste this prompt:**
 ```text
-Please install or update the Qlik Sense AI skill from the public repository at https://github.com/sean-gordon/qlik-ai-skill
+Please install or update the Qlik Sense AI skill from the public repository at
+https://github.com/sean-gordon/qlik-ai-skill
 
-To do this:
-1. Clone or download the repository files (both SKILL.md and all files in the references/ folder).
-2. Identify the correct installation path. If you support global configuration skills, install them in the global folder (e.g. %USERPROFILE%\.{ai_assistant_name}\config\skills\QlikSense\ on Windows or ~/.{ai_assistant_name}/config/skills/QlikSense/ on macOS/Linux, replacing {ai_assistant_name} with your configuration directory, such as gemini). Otherwise, install them locally in the project workspace under .agents/skills/QlikSense/.
-3. Overwrite any existing files to ensure everything is up to date.
-4. Verify the installation is complete and confirm it is ready for use.
+PART A — install the skill files (required):
+1. Clone or download the repository (SKILL.md, the references/ folder, and the tool/ folder).
+2. Identify the correct skills path for your host. If you support global skills, install to the
+   global folder (e.g. %USERPROFILE%\.{ai_assistant_name}\skills\QlikSense\ on Windows or
+   ~/.{ai_assistant_name}/skills/QlikSense/ on macOS/Linux, replacing {ai_assistant_name} with
+   your config directory such as claude or gemini). Otherwise install locally under
+   .agents/skills/QlikSense/ in the project workspace.
+3. Place SKILL.md at the QlikSense/ root and copy the entire references/ folder beside it.
+   Overwrite any existing files so everything is up to date.
+
+PART B — set up the retrieval tool (optional but recommended if you support MCP):
+4. From the tool/ folder, create an isolated Python virtual environment (Python 3.10+; the
+   Windows "py" launcher or python3 both work) and install dependencies into it:
+     - Windows:      py -m venv .venv ; .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+     - macOS/Linux:  python3 -m venv .venv ; ./.venv/bin/python -m pip install -r requirements.txt
+5. Build the search index (this downloads a ~90MB embedding model once, then runs offline; no API key):
+     - Windows:      .\.venv\Scripts\python.exe build_index.py --backend chroma
+     - macOS/Linux:  ./.venv/bin/python build_index.py --backend chroma
+6. Register the MCP server with your host, using the venv's Python interpreter (NOT a bare
+   "python3" — the dependencies live in the venv). For Claude Code, run:
+     claude mcp add qlik-knowledge --scope user \
+       --env QLIK_BACKEND=chroma \
+       --env QLIK_INDEX_DIR="<absolute path to the tool folder>" \
+       -- "<absolute path to the venv python>" "<absolute path to tool/qlik_mcp_server.py>"
+   For other MCP hosts, add an equivalent stdio server entry pointing the command at the venv
+   Python and tool/qlik_mcp_server.py, with the same two env vars.
+7. Verify: confirm SKILL.md + references/ are in place, and (if you did Part B) that the
+   qlik_knowledge_search and qlik_knowledge_domains tools are connected. Restart the assistant
+   if MCP tools only load at startup. Report what you installed and confirm it is ready.
 ```
 
 ### 2. Web-Based AI (Claude Projects, Custom GPTs)
-If you are using a web browser interface that does not have direct access to your computer's filesystem, you can upload the files manually:
-1. Download this repository as a ZIP file (click the green **Code** button at the top of this page, then select **Download ZIP**).
-2. Extract the ZIP file on your computer.
-3. Upload `SKILL.md` and all the markdown files inside the `references/` folder to your Claude Project knowledge base, Custom GPT builder, or equivalent AI workspace.
+
+Browser interfaces have no filesystem access, so use the skill files only (Part A — the retrieval tool needs a local Python runtime and cannot run here):
+1. Download this repository as a ZIP (green **Code** button → **Download ZIP**) and extract it.
+2. Upload `SKILL.md` and every markdown file inside `references/` to your Claude Project knowledge base, Custom GPT builder, or equivalent workspace.
 
 ### 3. Manual Installation (For Developers)
 
-If you prefer to install the files manually:
+#### Part A — skill files
 
-#### Global Installation
-Copy the repository contents to your global AI assistant skills folder (replace `{ai_assistant_name}` with your tool's directory name, e.g. `gemini` or `claude`):
+Copy the skill into your assistant's skills folder (replace `{ai_assistant_name}`, e.g. `claude` or `gemini`):
 
-**Windows:**
-```
-%USERPROFILE%\.{ai_assistant_name}\config\skills\QlikSense\
-```
+| OS | Global path |
+|----|-------------|
+| Windows | `%USERPROFILE%\.{ai_assistant_name}\skills\QlikSense\` |
+| macOS/Linux | `~/.{ai_assistant_name}/skills/QlikSense/` |
 
-**macOS/Linux:**
-```
-~/.{ai_assistant_name}/config/skills/QlikSense/
-```
+For a project-scoped install instead, copy into `.agents/skills/QlikSense/` at your workspace root. Either way, keep this layout:
 
-Ensure the directory structure is:
 ```
 QlikSense/
 ├── SKILL.md
-└── references/
-    ├── debugging_guide.md
-    ├── expression_knowledgebase.md
-    ├── scripting_knowledgebase.md
-    └── visualization_guide.md
+├── references/          # all 18 reference markdown files
+└── tool/                # only needed for Part B
 ```
 
-#### Project-Specific (Workspace) Installation
-1. Navigate to your workspace root.
-2. Create the directory: `.agents/skills/QlikSense/`
-3. Copy all files from this repository into that folder.
+For **Claude Code**, you can also reference `SKILL.md` and the `references/` files from your project's `CLAUDE.md` as additional context sources.
 
-#### Claude Code
-Place `SKILL.md` content in your `CLAUDE.md`, or reference the files from your project's `CLAUDE.md` as additional context sources.
+#### Part B — retrieval tool (optional)
+
+See [`tool/README.md`](tool/README.md) for the full setup. In short, from the `tool/` folder: create a venv, `pip install -r requirements.txt`, run `build_index.py --backend chroma`, then register the MCP server (pointing at the venv Python) per the commands in the prompt above. A `pgvector` backend is available for teams sharing one central index.
+
+> **Tip:** the `tool/chroma_db/` index is a build output and is intentionally not committed — each machine builds it locally with `build_index.py` (free, no API key). `tool/chunks.jsonl` *is* committed so you can skip re-chunking unless you edit the references.
 
 ---
 

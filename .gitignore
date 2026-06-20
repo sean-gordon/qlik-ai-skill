@@ -1,3 +1,17 @@
 # Claude Code
 CLAUDE.md
 .claude/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Built retrieval index (regenerate locally with build_index.py)
+tool/chroma_db/
+tool/index.npz
+tool/chunks.json
+
+# Local env
+.env
