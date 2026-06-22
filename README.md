@@ -153,7 +153,9 @@ local filesystem permits it, and prints the `claude mcp add` command to register
 the MCP server. If Chroma SQLite writes are blocked, setup completes in
 `chunks.jsonl` fallback mode so CLI/MCP search remains usable. See
 [`tool/README.md`](tool/README.md) for details, the `pgvector` team backend, and
-the CLI (`tool/qlik_search.py`).
+the CLI (`tool/qlik_search.py`). Runtime retrieval has a backend timeout
+(`QLIK_SEARCH_TIMEOUT_SECONDS`, default 8 seconds) so a stuck semantic backend
+falls back to `chunks.jsonl` instead of blocking the assistant.
 
 > **Tip:** the `tool/chroma_db/` index and `tool/.venv` are build outputs and are intentionally not committed — each machine builds them locally with `setup.py` (free, no API key). `tool/chunks.jsonl` *is* committed so you can skip re-chunking unless you edit the references.
 

@@ -51,6 +51,14 @@ successfully in fallback mode. CLI and MCP search still work through the bundled
 `chunks.jsonl` lexical fallback, and `build_index.py` can be rerun later with a
 writable `--outdir`.
 
+Search calls also have a backend timeout so a slow or stuck Chroma/pgvector
+lookup does not block the assistant indefinitely. The default is 8 seconds, then
+the tool falls back to `chunks.jsonl`. Override with
+`QLIK_SEARCH_TIMEOUT_SECONDS`; set it to `0` to disable the timeout. During
+setup, `QLIK_SETUP_INDEX_TIMEOUT_SECONDS` controls the Chroma index-build
+timeout (default 90 seconds) and `QLIK_SETUP_COMMAND_TIMEOUT_SECONDS` controls
+other setup subprocesses (default 300 seconds).
+
 The sections below cover the same steps manually, plus the pgvector team backend.
 
 ## Which backend?

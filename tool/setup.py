@@ -25,6 +25,15 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 VENV = HERE / ".venv"
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 300
+DEFAULT_INDEX_TIMEOUT_SECONDS = 90
+
+
+def timeout_from_env(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.environ.get(name, str(default))))
+    except ValueError:
+        return default
 
 
 def venv_python(v: Path) -> Path:
@@ -35,18 +44,21 @@ def venv_python(v: Path) -> Path:
 
 def run(cmd, **kw):
     print(f"  $ {' '.join(str(c) for c in cmd)}")
+    kw.setdefault("timeout", timeout_from_env("QLIK_SETUP_COMMAND_TIMEOUT_SECONDS", DEFAULT_COMMAND_TIMEOUT_SECONDS))
     subprocess.run(cmd, check=True, **kw)
 
 
 def run_shell(cmd, **kw):
     line = subprocess.list2cmdline([str(c) for c in cmd])
     print(f"  $ {line}")
+    kw.setdefault("timeout", timeout_from_env("QLIK_SETUP_COMMAND_TIMEOUT_SECONDS", DEFAULT_COMMAND_TIMEOUT_SECONDS))
     subprocess.run(line, check=True, shell=True, **kw)
 
 
 def run_shell_captured(cmd, **kw):
     line = subprocess.list2cmdline([str(c) for c in cmd])
     print(f"  $ {line}")
+    kw.setdefault("timeout", timeout_from_env("QLIK_SETUP_INDEX_TIMEOUT_SECONDS", DEFAULT_INDEX_TIMEOUT_SECONDS))
     return subprocess.run(line, check=True, shell=True, capture_output=True, text=True, **kw)
 
 
@@ -68,7 +80,7 @@ def run_index_build(py: Path, idx: str) -> str:
         if res.stdout:
             print(res.stdout.rstrip())
         return str(target)
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         print("  Chroma index build failed; the bundled chunks.jsonl fallback remains usable.")
         return ""
 
@@ -110,7 +122,12 @@ def main():
     print("[2/3] checking dependencies ...")
     deps_ok = False
     try:
-        res = subprocess.run([str(py), "-c", "import chromadb, mcp"], capture_output=True, text=True)
+        res = subprocess.run(
+            [str(py), "-c", "import chromadb, mcp"],
+            capture_output=True,
+            text=True,
+            timeout=timeout_from_env("QLIK_SETUP_COMMAND_TIMEOUT_SECONDS", DEFAULT_COMMAND_TIMEOUT_SECONDS),
+        )
         if res.returncode == 0:
             deps_ok = True
             print("  dependencies already installed and importable.")
@@ -135,6 +152,7 @@ def main():
         cwd=str(HERE),
         env=env,
         text=True,
+        timeout=timeout_from_env("QLIK_SETUP_COMMAND_TIMEOUT_SECONDS", DEFAULT_COMMAND_TIMEOUT_SECONDS),
     ).strip()
     idx = run_index_build(py, idx)
 

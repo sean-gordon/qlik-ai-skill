@@ -18,7 +18,9 @@ bundled chunks.jsonl as a lexical fallback when Chroma is unavailable.
 
 import os
 import json
+import queue
 import re
+import threading
 from pathlib import Path
 
 EMBED_MODEL = "all-MiniLM-L6-v2"
@@ -26,6 +28,7 @@ COLLECTION = "qlik_knowledge"
 QUERY_SYNONYMS = {
     "upsert": ["insert", "update", "updated", "primarykey", "modificationtime", "exists"],
 }
+DEFAULT_SEARCH_TIMEOUT_SECONDS = 8.0
 
 # Domain filters advertised to callers. Kept here so the MCP server, the CLI
 # and the docs all describe the same set.
@@ -64,6 +67,14 @@ class ToolNotReady(RuntimeError):
 
 def _backend() -> str:
     return os.environ.get("QLIK_BACKEND", "chroma")
+
+
+def _search_timeout_seconds() -> float:
+    raw = os.environ.get("QLIK_SEARCH_TIMEOUT_SECONDS", str(DEFAULT_SEARCH_TIMEOUT_SECONDS))
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return DEFAULT_SEARCH_TIMEOUT_SECONDS
 
 
 def default_index_dir() -> Path:
@@ -156,6 +167,28 @@ def _search_chroma(query, top_k, domain, index_dir):
     return out
 
 
+def _run_with_timeout(fn, args, timeout_seconds):
+    if timeout_seconds <= 0:
+        return fn(*args)
+    result_queue: queue.Queue = queue.Queue(maxsize=1)
+
+    def target():
+        try:
+            result_queue.put((True, fn(*args)))
+        except BaseException as e:
+            result_queue.put((False, e))
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    worker.join(timeout_seconds)
+    if worker.is_alive():
+        raise TimeoutError(f"search backend timed out after {timeout_seconds:g}s")
+    ok, value = result_queue.get()
+    if ok:
+        return value
+    raise value
+
+
 # ---- pgvector backend ------------------------------------------------------
 def _embed_query(text):
     if "embedder" not in _state:
@@ -234,10 +267,11 @@ def search(query, top_k=5, domain=None, backend=None, index_dir=None):
     dom = (domain or "").strip() or None
     be = backend or _backend()
     idx = _index_dir(index_dir)
+    timeout = _search_timeout_seconds()
     if be == "pgvector":
-        return _search_pgvector(query, top_k, dom, idx)
+        return _run_with_timeout(_search_pgvector, (query, top_k, dom, idx), timeout)
     try:
-        return _search_chroma(query, top_k, dom, idx)
+        return _run_with_timeout(_search_chroma, (query, top_k, dom, idx), timeout)
     except Exception:
         return _search_jsonl(query, top_k, dom)
 
