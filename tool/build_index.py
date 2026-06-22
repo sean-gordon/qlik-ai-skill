@@ -12,6 +12,8 @@ Two backends, one interface:
                                 bundled default embedder (ONNX all-MiniLM-L6-v2,
                                 384-dim) — runs on CPU, free, no API key, no extra
                                 dependency. Best for Claude Code on individual machines.
+                                Defaults to the user cache directory unless --outdir
+                                or QLIK_INDEX_DIR is set.
 
   --backend pgvector            Stores chunks + embeddings in PostgreSQL with the
                                 pgvector extension. Best for a shared, centrally
@@ -76,7 +78,7 @@ def build_chroma(chunks, outdir: Path):
         embedding_function=LocalONNXEmbeddingFunction(model_dir),
         metadata={"hnsw:space": "cosine"},
     )
-    print(f"  embedding {len(chunks)} chunks locally (Chroma default: bge-small)...")
+    print(f"  embedding {len(chunks)} chunks locally (Chroma default: {EMBED_MODEL})...")
     # Chroma embeds documents itself; we just supply text + metadata
     coll.add(
         ids=[c["id"] for c in chunks],
@@ -97,7 +99,7 @@ def build_pgvector(chunks):
     from pgvector.psycopg import register_vector  # type: ignore
     dsn = os.environ["DATABASE_URL"]
     texts = [c["text"] for c in chunks]
-    print(f"  embedding {len(texts)} chunks locally (fastembed: bge-small)...")
+    print(f"  embedding {len(texts)} chunks locally ({EMBED_MODEL})...")
     embs = embed_local(texts)
     with psycopg.connect(dsn) as conn:
         conn.execute("CREATE EXTENSION IF NOT EXISTS vector")

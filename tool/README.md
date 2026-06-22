@@ -23,7 +23,8 @@ no per-query cost. The model downloads once (~90MB) on the first build.
 
 ## Quick start
 
-One command builds everything (venv + dependencies + index):
+One command builds everything (venv + dependencies + index when the local
+filesystem permits Chroma SQLite writes):
 
 ```bash
 # Windows           macOS/Linux
@@ -45,11 +46,17 @@ The default Chroma index path is the user cache directory
 Unix-like systems when set). Set `QLIK_INDEX_DIR` or pass `--outdir` to use a
 custom index directory.
 
+If Chroma cannot write to the available filesystem, `setup.py` exits
+successfully in fallback mode. CLI and MCP search still work through the bundled
+`chunks.jsonl` lexical fallback, and `build_index.py` can be rerun later with a
+writable `--outdir`.
+
 The sections below cover the same steps manually, plus the pgvector team backend.
 
 ## Which backend?
 
-- **chroma** (default) — persists a `chroma_db/` folder here. No database, no
+- **chroma** (default) — persists a `chroma_db/` folder in the user cache by
+  default, or in the directory supplied by `QLIK_INDEX_DIR`/`--outdir`. No database, no
   server beyond the MCP server itself. Embeds locally with the bundled model.
   **Recommended for Claude Code on individual machines.**
 - **pgvector** — stores chunks and embeddings in PostgreSQL with the `pgvector`
@@ -87,7 +94,7 @@ Verified working on Python 3.14 with `chromadb` 1.5.x and `mcp` 1.28.x. Python
 # Regenerate chunks — only needed if you edited files in ../references/
 python build_chunks.py ../references chunks.jsonl
 
-# Chroma backend (default) — writes ./chroma_db/
+# Chroma backend (default) — writes to the user cache unless --outdir is supplied
 python build_index.py --backend chroma
 
 # OR pgvector backend

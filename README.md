@@ -148,7 +148,12 @@ One command from the installed `QlikSense/` folder builds everything:
 py tool\setup.py    python3 tool/setup.py
 ```
 
-It creates `tool/.venv`, installs dependencies, builds the Chroma index, and prints the `claude mcp add` command to register the MCP server. See [`tool/README.md`](tool/README.md) for details, the `pgvector` team backend, and the CLI (`tool/qlik_search.py`).
+It creates `tool/.venv`, installs dependencies, builds the Chroma index when the
+local filesystem permits it, and prints the `claude mcp add` command to register
+the MCP server. If Chroma SQLite writes are blocked, setup completes in
+`chunks.jsonl` fallback mode so CLI/MCP search remains usable. See
+[`tool/README.md`](tool/README.md) for details, the `pgvector` team backend, and
+the CLI (`tool/qlik_search.py`).
 
 > **Tip:** the `tool/chroma_db/` index and `tool/.venv` are build outputs and are intentionally not committed — each machine builds them locally with `setup.py` (free, no API key). `tool/chunks.jsonl` *is* committed so you can skip re-chunking unless you edit the references.
 

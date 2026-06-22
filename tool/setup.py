@@ -38,6 +38,61 @@ def run(cmd, **kw):
     subprocess.run(cmd, check=True, **kw)
 
 
+def run_shell(cmd, **kw):
+    line = subprocess.list2cmdline([str(c) for c in cmd])
+    print(f"  $ {line}")
+    subprocess.run(line, check=True, shell=True, **kw)
+
+
+def run_shell_captured(cmd, **kw):
+    line = subprocess.list2cmdline([str(c) for c in cmd])
+    print(f"  $ {line}")
+    return subprocess.run(line, check=True, shell=True, capture_output=True, text=True, **kw)
+
+
+def run_index_build(py: Path, idx: str) -> str:
+    target = Path(idx)
+    outdir_arg = str(target)
+    if not is_writable_index_path(target):
+        target = workspace_index_path()
+        print(f"  default index path is not writable; using workspace-local path: {target}")
+        outdir_arg = str(Path("tool") / target.name)
+    try:
+        res = run_shell_captured([
+            str(py),
+            str(HERE / "build_index.py"),
+            "--backend", "chroma",
+            "--chunks", str(Path("tool") / "chunks.jsonl"),
+            "--outdir", outdir_arg,
+        ], cwd=str(HERE.parent))
+        if res.stdout:
+            print(res.stdout.rstrip())
+        return str(target)
+    except subprocess.CalledProcessError:
+        print("  Chroma index build failed; the bundled chunks.jsonl fallback remains usable.")
+        return ""
+
+
+def workspace_index_path() -> Path:
+    for i in range(1, 1000):
+        candidate = HERE / f"index_workspace_{i}"
+        if not candidate.exists():
+            return candidate
+    return HERE / ".index"
+
+
+def is_writable_index_path(path: Path) -> bool:
+    try:
+        if (path / "chroma_db").exists():
+            return False
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".write-test"
+        probe.write_text("ok", encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
 def main():
     print(f"Qlik retrieval tool setup — {HERE}")
 
@@ -81,20 +136,27 @@ def main():
         env=env,
         text=True,
     ).strip()
-    run([str(py), str(HERE / "build_index.py"), "--backend", "chroma", "--outdir", idx], cwd=str(HERE))
+    idx = run_index_build(py, idx)
 
     # Done — print next steps
     server = str(HERE / "qlik_mcp_server.py")
     print("\n" + "=" * 70)
-    print("DONE. The retrieval tool is built and ready.")
+    print("DONE. The retrieval tool is ready.")
     print("=" * 70)
     print(f"\nVenv Python : {py}")
     print(f"Search CLI  : \"{py}\" \"{HERE / 'qlik_search.py'}\" \"your query\"")
     print("\nOptional — register the MCP server with Claude Code (then restart it):")
-    print(f'  claude mcp add qlik-knowledge --scope user \\\n'
-          f'    --env QLIK_BACKEND=chroma \\\n'
-          f'    --env "QLIK_INDEX_DIR={idx}" \\\n'
-          f'    -- "{py}" "{server}"')
+    if idx:
+        print(f'  claude mcp add qlik-knowledge --scope user \\\n'
+              f'    --env QLIK_BACKEND=chroma \\\n'
+              f'    --env "QLIK_INDEX_DIR={idx}" \\\n'
+              f'    -- "{py}" "{server}"')
+    else:
+        print("  Chroma index build was blocked in this environment.")
+        print("  CLI and MCP search still work through the bundled chunks.jsonl fallback.")
+        print(f'  claude mcp add qlik-knowledge --scope user \\\n'
+              f'    --env QLIK_BACKEND=chroma \\\n'
+              f'    -- "{py}" "{server}"')
     print("\nVerify: claude mcp get qlik-knowledge   (should report Connected)")
 
 

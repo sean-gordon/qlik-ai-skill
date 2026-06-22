@@ -12,7 +12,8 @@ Public API:
   format_hits(query, hits, domain=None) -> str   # human/LLM-readable block
 
 Backend is chosen by the QLIK_BACKEND env var (default "chroma"). The Chroma
-index directory defaults to this file's own folder, so the CLI needs no config.
+index directory defaults to the user cache when an index exists there, with the
+bundled chunks.jsonl as a lexical fallback when Chroma is unavailable.
 """
 
 import os
@@ -22,6 +23,9 @@ from pathlib import Path
 
 EMBED_MODEL = "all-MiniLM-L6-v2"
 COLLECTION = "qlik_knowledge"
+QUERY_SYNONYMS = {
+    "upsert": ["insert", "update", "updated", "primarykey", "modificationtime", "exists"],
+}
 
 # Domain filters advertised to callers. Kept here so the MCP server, the CLI
 # and the docs all describe the same set.
@@ -193,7 +197,12 @@ def _search_jsonl(query, top_k, domain):
     chunks_path = Path(__file__).parent / "chunks.jsonl"
     if not chunks_path.exists():
         raise ToolNotReady(f"fallback chunks missing: {chunks_path}")
-    terms = [t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 2]
+    terms = []
+    for term in re.findall(r"[a-z0-9]+", query.lower()):
+        if len(term) <= 2:
+            continue
+        terms.append(term)
+        terms.extend(QUERY_SYNONYMS.get(term, []))
     scored = []
     for line in chunks_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
