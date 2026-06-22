@@ -102,6 +102,9 @@ PART B — set up the retrieval tool (required; the skill answers through it):
 5. setup.py prints a `claude mcp add ...` command at the end. Run it to register the MCP server
    (it points at the venv's Python and tool/qlik_mcp_server.py). For non-Claude MCP hosts, add an
    equivalent stdio server entry using that same venv Python and tool/qlik_mcp_server.py.
+   The generated Chroma index is stored in the user cache by default
+   (`%LOCALAPPDATA%\qlik-ai-skill\index` on Windows, or `$XDG_CACHE_HOME` on
+   Unix-like systems when set); set `QLIK_INDEX_DIR` to use a custom index path.
 6. Verify: SKILL.md + references/ + tool/ are in place, `tool/setup.py` completed, and (after a
    restart, since MCP tools load at startup) `qlik_knowledge_search` is connected. The skill also
    works immediately via the bundled CLI (tool/qlik_search.py) without a restart. Report what you

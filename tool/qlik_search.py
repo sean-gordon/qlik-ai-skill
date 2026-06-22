@@ -29,6 +29,9 @@ import qlik_index
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description="Search the Qlik Sense knowledge corpus.")
     ap.add_argument("query", nargs="?", help="A specific question or concept.")
     ap.add_argument("--domain", default="", help="Optional domain filter (see --domains).")

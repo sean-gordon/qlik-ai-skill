@@ -73,10 +73,17 @@ def main():
         print("[3/3] chunks.jsonl missing — regenerating from ../references ...")
         run([str(py), str(HERE / "build_chunks.py"), str(HERE.parent / "references"), str(chunks)])
     print("[3/3] building Chroma index (first run downloads ~90MB model) ...")
-    run([str(py), str(HERE / "build_index.py"), "--backend", "chroma"], cwd=str(HERE))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(HERE)
+    idx = subprocess.check_output(
+        [str(py), "-c", "import qlik_index; print(qlik_index.default_index_dir())"],
+        cwd=str(HERE),
+        env=env,
+        text=True,
+    ).strip()
+    run([str(py), str(HERE / "build_index.py"), "--backend", "chroma", "--outdir", idx], cwd=str(HERE))
 
     # Done — print next steps
-    idx = str(HERE)
     server = str(HERE / "qlik_mcp_server.py")
     print("\n" + "=" * 70)
     print("DONE. The retrieval tool is built and ready.")

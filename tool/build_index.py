@@ -55,6 +55,7 @@ def embed_local(texts: list[str]) -> list[list[float]]:
 def build_chroma(chunks, outdir: Path):
     import chromadb  # type: ignore
     persist = outdir / "chroma_db"
+    persist.mkdir(parents=True, exist_ok=True)
     from chromadb.config import Settings
     client = chromadb.PersistentClient(
         path=str(persist),
@@ -66,10 +67,13 @@ def build_chroma(chunks, outdir: Path):
     except Exception:
         pass
     # Use Chroma's built-in fastembed embedder so query-time embedding matches
-    from qlik_index import LocalONNXEmbeddingFunction
+    from qlik_index import LocalONNXEmbeddingFunction, _model_ready
+    model_dir = outdir / "model"
+    if not _model_ready(model_dir):
+        model_dir = Path(__file__).parent / "model"
     coll = client.create_collection(
         name=COLLECTION,
-        embedding_function=LocalONNXEmbeddingFunction(outdir / "model"),
+        embedding_function=LocalONNXEmbeddingFunction(model_dir),
         metadata={"hnsw:space": "cosine"},
     )
     print(f"  embedding {len(chunks)} chunks locally (Chroma default: bge-small)...")
@@ -129,13 +133,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--backend", choices=["chroma", "pgvector"], default="chroma")
     ap.add_argument("--chunks", default="chunks.jsonl")
-    ap.add_argument("--outdir", default=".")
+    ap.add_argument("--outdir", default="")
     args = ap.parse_args()
 
     chunks = load_chunks(Path(args.chunks))
     print(f"Loaded {len(chunks)} chunks")
     if args.backend == "chroma":
-        build_chroma(chunks, Path(args.outdir))
+        from qlik_index import default_index_dir
+        outdir = Path(args.outdir) if args.outdir else default_index_dir()
+        build_chroma(chunks, outdir)
     else:
         build_pgvector(chunks)
     print("Done.")

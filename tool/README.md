@@ -40,6 +40,11 @@ the restart, via the CLI:
 ./.venv/bin/python      qlik_search.py --domains                                         # list filters
 ```
 
+The default Chroma index path is the user cache directory
+(`%LOCALAPPDATA%\qlik-ai-skill\index` on Windows, or `$XDG_CACHE_HOME` on
+Unix-like systems when set). Set `QLIK_INDEX_DIR` or pass `--outdir` to use a
+custom index directory.
+
 The sections below cover the same steps manually, plus the pgvector team backend.
 
 ## Which backend?
@@ -102,7 +107,7 @@ project and is not committed to any repo. Point the command at the **venv** Pyth
 ```bash
 claude mcp add qlik-knowledge --scope user \
   --env QLIK_BACKEND=chroma \
-  --env QLIK_INDEX_DIR="/absolute/path/to/tool" \
+  --env QLIK_INDEX_DIR="/absolute/path/to/index" \
   -- "/absolute/path/to/tool/.venv/bin/python" "/absolute/path/to/tool/qlik_mcp_server.py"
 ```
 
@@ -121,7 +126,7 @@ again using the venv Python:
       "args": ["/absolute/path/to/tool/qlik_mcp_server.py"],
       "env": {
         "QLIK_BACKEND": "chroma",
-        "QLIK_INDEX_DIR": "/absolute/path/to/tool"
+        "QLIK_INDEX_DIR": "/absolute/path/to/index"
       }
     }
   }

@@ -16,6 +16,8 @@ index directory defaults to this file's own folder, so the CLI needs no config.
 """
 
 import os
+import json
+import re
 from pathlib import Path
 
 EMBED_MODEL = "all-MiniLM-L6-v2"
@@ -38,6 +40,19 @@ DOMAINS = {
 }
 
 
+def _model_ready(model_dir: Path) -> bool:
+    onnx_dir = model_dir / "onnx"
+    required = (
+        "config.json",
+        "model.onnx",
+        "special_tokens_map.json",
+        "tokenizer_config.json",
+        "tokenizer.json",
+        "vocab.txt",
+    )
+    return all((onnx_dir / name).exists() for name in required)
+
+
 class ToolNotReady(RuntimeError):
     """Raised when the index or its dependencies are not available yet.
     Callers should treat this as 'run setup.py', not as a hard failure."""
@@ -47,11 +62,23 @@ def _backend() -> str:
     return os.environ.get("QLIK_BACKEND", "chroma")
 
 
+def default_index_dir() -> Path:
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_CACHE_HOME")
+    if base:
+        return Path(base) / "qlik-ai-skill" / "index"
+    return Path(__file__).parent
+
+
 def _index_dir(index_dir=None) -> Path:
     if index_dir:
         return Path(index_dir)
     env = os.environ.get("QLIK_INDEX_DIR")
-    return Path(env) if env else Path(__file__).parent
+    if env:
+        return Path(env)
+    cache_dir = default_index_dir()
+    if (cache_dir / "chroma_db").exists():
+        return cache_dir
+    return Path(__file__).parent
 
 
 _state: dict = {}
@@ -67,6 +94,7 @@ class LocalONNXEmbeddingFunction:
     def __call__(self, input):
         if LocalONNXEmbeddingFunction._model is None:
             from chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2 import ONNXMiniLM_L6_V2
+            ONNXMiniLM_L6_V2.DOWNLOAD_PATH = self.model_dir
             model = ONNXMiniLM_L6_V2()
             model.DOWNLOAD_PATH = self.model_dir
             LocalONNXEmbeddingFunction._model = model
@@ -94,9 +122,12 @@ def _chroma_collection(index_dir: Path):
             settings=Settings(anonymized_telemetry=False)
         )
         try:
+            model_dir = index_dir / "model"
+            if not _model_ready(model_dir):
+                model_dir = Path(__file__).parent / "model"
             _state["coll"] = client.get_collection(
                 name=COLLECTION,
-                embedding_function=LocalONNXEmbeddingFunction(index_dir / "model")
+                embedding_function=LocalONNXEmbeddingFunction(model_dir)
             )
         except Exception as e:  # collection absent / corrupt
             raise ToolNotReady(f"collection '{COLLECTION}' unavailable: {e}") from e
@@ -158,6 +189,34 @@ def _search_pgvector(query, top_k, domain, index_dir):
     return [(r[0], {"source": r[1], "heading_path": r[2].split(" > "), "text": r[3]}) for r in rows]
 
 
+def _search_jsonl(query, top_k, domain):
+    chunks_path = Path(__file__).parent / "chunks.jsonl"
+    if not chunks_path.exists():
+        raise ToolNotReady(f"fallback chunks missing: {chunks_path}")
+    terms = [t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 2]
+    scored = []
+    for line in chunks_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        chunk = json.loads(line)
+        tags = chunk.get("tags", [])
+        if domain and domain not in tags:
+            continue
+        hay = (chunk.get("title", "") + " " + chunk.get("text", "")).lower()
+        score = sum(hay.count(term) for term in terms)
+        if score:
+            scored.append((float(score), {
+                "source": chunk.get("source", "?"),
+                "heading_path": chunk.get("heading_path", []),
+                "text": chunk.get("text", ""),
+            }))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    if not scored:
+        return []
+    best = scored[0][0] or 1.0
+    return [(score / best, chunk) for score, chunk in scored[:top_k]]
+
+
 # ---- Public API ------------------------------------------------------------
 def search(query, top_k=5, domain=None, backend=None, index_dir=None):
     """Return [(score, {source, heading_path, text})] best matches for query.
@@ -168,7 +227,10 @@ def search(query, top_k=5, domain=None, backend=None, index_dir=None):
     idx = _index_dir(index_dir)
     if be == "pgvector":
         return _search_pgvector(query, top_k, dom, idx)
-    return _search_chroma(query, top_k, dom, idx)
+    try:
+        return _search_chroma(query, top_k, dom, idx)
+    except Exception:
+        return _search_jsonl(query, top_k, dom)
 
 
 def format_hits(query, hits, domain=None):
